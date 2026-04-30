@@ -1,0 +1,100 @@
+%% AA222: Optimal Control Allocation for 10-Prop Blown Wing
+clear; clc;
+
+% 1. Load Aircraft Baseline Parameters
+init_params; % Runs your existing script
+target_v = 18;     % Target Airspeed (m/s)
+target_h = 500;    % Target Altitude (m)
+
+% 2. Define Optimization Variables (x)
+% u = [10xRPM, 1xElevator, 1xFlap, 1xRudder] (Total length = 13)
+x0 = [6000*ones(1,10), 0, 0, 0]; 
+lb = [zeros(1,10), -0.5, 0, -0.5]; 
+ub = [12000*ones(1,10), 0.5, 0.6, 0.5];
+% 4. Optimizer Options
+options = optimoptions('fmincon', ...
+    'Display', 'iter-detailed', ...
+    'Algorithm', 'interior-point', ...
+    'UseParallel', false, ... % Set true if you have Parallel Computing Toolbox
+    'MaxIterations', 10);
+
+% 5. Run the Optimizer
+fprintf('Starting AA222 Optimization Loop...\n');
+[x_opt, J_min] = fmincon(@(x) objective_function(x, target_v, target_h), ...
+                         x0, [], [], [], [], lb, ub, [], options);
+
+% 6. Show Results
+fprintf('\n--- Optimal Control Allocation ---\n');
+fprintf('Motors 1-10: %.2f\n', x_opt(1:10));
+fprintf('Elevator:    %.2f rad\n', x_opt(11));
+fprintf('Flap:        %.2f rad\n', x_opt(12));
+
+function J = objective_function(x, target_v, target_h)
+    model_name = 'blown_wing_model';
+    
+    % --- 1. SIMULATION SETUP ---
+    x = x(:)'; % Ensure x is a row vector
+    t_sim = [0; 10]; % 10 second sim for stability
+    u_input = timeseries([x; x], t_sim);
+    
+    simIn = Simulink.SimulationInput(model_name);
+    simIn = simIn.setExternalInput(u_input);
+    
+    try
+        % Using FastRestart is highly recommended for speed
+        simOut = sim(simIn, 'ShowProgress', 'off', 'UseFastRestart', 'on');
+        
+        % Data Extraction
+        time_vec = simOut.logsout.get('V_b').Values.Time;
+        vel_data = simOut.logsout.get('V_b').Values.Data;   % [u, v, w]
+        pos_data = simOut.logsout.get('X_e').Values.Data;   % [X, Y, Z]
+        euler    = simOut.logsout.get('Euler').Values.Data; % [phi, theta, psi]
+        rates    = simOut.logsout.get('omega_b').Values.Data; % [p, q, r]
+    catch
+        J = 1e8; return; % Heavy penalty for simulation crash
+    end
+
+    % Only look at the second half of simulation (steady state)
+    idx = time_vec > (time_vec(end) / 2); 
+
+    %% --- 2. STABILITY PENALTIES (The "No-Spin" Zone) ---
+    % roll (phi) and yaw (psi) should be zero for level flight
+    roll_err = mean(euler(idx, 1).^2); 
+    yaw_err  = mean(euler(idx, 3).^2); 
+    
+    % Yaw Rate (r) penalty is the "secret sauce" to stop the spinning
+    yaw_rate_err = mean(rates(idx, 3).^2);
+    
+    % Roll Rate (p) penalty prevents high-frequency wing rocking
+    roll_rate_err = mean(rates(idx, 1).^2);
+
+    %% --- 3. TRACKING ERRORS ---
+    actual_v = mean(sqrt(sum(vel_data(idx,:).^2, 2)));
+    actual_h = mean(-pos_data(idx,3)); % NED to Altitude
+    
+    v_err = (target_v - actual_v)^2;
+    h_err = (target_h - actual_h)^2;
+
+    %% --- 4. CONTROL EFFORT & VIBRATION ---
+    % Energy: motors squared. Weight must be tiny because RPM^2 is huge.
+    energy_cost = sum(x(1:10).^2); 
+    % Vibration: penalty for vertical velocity oscillation
+    vibration_cost = std(vel_data(idx, 3)); 
+
+    %% --- 5. WEIGHTED SCALAR COST (TUNED) ---
+    % Stability is #1 priority. Tracking is #2.
+    W_stability = 50000.0;  % Massive weight to force wings level/nose straight
+    W_tracking  = 1.0;      % 1 meter error = 1 cost unit
+    W_vib       = 100.0;    % Keep the flight smooth
+    W_energy    = 1e-8;     % Extremely small to allow differential thrust to work
+
+    J = (W_stability * (roll_err + yaw_err + 10*yaw_rate_err + roll_rate_err)) + ...
+        (W_tracking  * (v_err + h_err)) + ...
+        (W_vib       * vibration_cost) + ...
+        (W_energy    * energy_cost);
+    
+    % --- 6. "HARD" FAIL PENALTIES ---
+    % If the plane is on the ground or inverted, give it a massive cost
+    if actual_h < 50 || isnan(actual_h), J = J + 1e7; end
+    if abs(mean(euler(idx,1))) > 1.5,     J = J + 1e7; end % Don't go upside down
+end

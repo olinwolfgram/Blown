@@ -1,0 +1,77 @@
+%% AA222: Blown Wing Aircraft Parameters
+clear; % Keep workspace clean
+
+%% 1. Basic Geometry (CRITICAL - Add these)
+% --- Main Wing  ---
+params.S = 0.4;             % Total Wing Area (m^2)
+params.b = 2.0;             % Wingspan (m)
+params.c = params.S / params.b; % Mean Aerodynamic Chord (m) [0.2m]
+
+% --- Horizontal Tail (Elevator) ---
+params.S_ht = 0.08;        % Area of horizontal tail (m^2)
+params.b_ht = 
+params.c_ht = 0.15;        % Chord of tail (m)
+params.lt   = 0.8;         % Distance from CG to Tail CP (m)
+params.CL_alpha_ht = 3.5;  % Lift slope of tail (symmetric airfoil)
+params.CL_delta_e  = -1.5; % Elevator effectiveness (Per Radian)
+
+% --- Vertical Tail (Rudder) ---
+params.S_vt = 0.05;        % Area of vertical tail (m^2)
+params.c_vt = 0.15;        % Chord of vertical tail (m)
+params.lv   = 0.85;        % Distance from CG back to Rudder (m)
+params.zv   = 0.15;        % Height of Rudder CP above CG (m)
+params.CL_delta_r = 0.8;   % Rudder effectiveness (Per Radian)
+
+%% 2. Inertial Properties
+params.mass = 5.5;          % Mass in kg
+% Inertia Tensor (kg*m^2)
+params.Ixx = 0.5;   
+params.Iyy = 0.8;   
+params.Izz = 1.2;   
+params.Ixz = 0.05;  
+% Construct full inertia matrix for 6DOF block parameter
+params.InertiaMatrix = [params.Ixx, 0, -params.Ixz; 
+                        0, params.Iyy, 0; 
+                        -params.Ixz, 0, params.Izz];
+
+%% 3. Propeller & Strip Theory Geometry
+params.D_prop = 0.1524;                         % 6-inch Propeller diameter (m)
+params.S_blown_seg = params.D_prop * params.c;  % Area behind ONE prop
+params.S_unblown = params.S - (10 * params.S_blown_seg); 
+
+% Motor Y-positions (Ensure this is a COLUMN vector for Cross Product)
+params.y_dist = [-0.9:0.2:0.9]';           
+
+% Propulsion Physics (For RPM-to-Thrust Function)
+params.Ct = 0.11;                               % Thrust Coefficient
+
+%% 4. Aerodynamic Coefficients (Lookup Table Data)
+% Define these here so you can tune them without opening Simulink blocks
+params.alpha_range = [-0.5, -0.2, 0, 0.2, 0.3, 0.5]; % Alpha Breakpoints (rad)
+params.CL_data     = [-0.8, -0.2, 0.35, 1.2, 1.4, 0.8];
+params.CD_data     = [0.3, 0.06, 0.05, 0.2, 0.4, 0.8];
+params.CM_data     = [0.5, 0.24, 0, -0.24, -0.36, -0.4];
+
+% Damping and Control Effectiveness
+params.Cm_q = -1000;         % Pitch damping
+params.CL_flap = 1.2;       % dCL / dFlap
+params.Cm_elev = -1.5;      % dCm / dElevator
+
+%% 5. Initial States (For 6DOF Block)
+initial_pos_ned = [0, 0, -500]; % 500m altitude
+initial_vel_body = [18, 0, 0];  % 18 m/s target cruise
+initial_euler = [0, 0, 0]; 
+initial_rates = [0, 0, 0];
+
+%% 6. Optimizer Variables (Bounds in RPM and Radians)
+% x = [RPM1...RPM10, Elevator_rad, Flap_rad]
+x0 = [6000*ones(1,10), 0, 0.1]; % Start at 6000 RPM, 0.1 rad flaps
+lb = [zeros(1,10), -0.5, 0];    % Min: 0 RPM, -0.5 rad elevator
+ub = [12000*ones(1,10), 0.5, 0.6]; % Max: 12k RPM, 0.6 rad flaps
+
+disp('Aircraft parameters initialized for Vectorized Blockset Architecture!');
+
+%% --- ARTIFACT REMOVAL LOG ---
+% 1. Removed aircraft_CL0/CD0: Now handled by the 0-index of Lookup Tables.
+% 2. Removed aircraft_k_blown: This was the "fake" physics. 
+%    The blown effect is now handled by q_blown calculation in Simulink.
