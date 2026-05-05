@@ -1,0 +1,76 @@
+{
+  "name": "AA146 Rank-1 DAE51 blown-wing vehicle",
+  "mass_kg": 2.490755576026096,
+  "gravity_mps2": 9.80665,
+  "rho_kgpm3": 1.225,
+  "geometry": {
+    "span_m": 2.0,
+    "chord_m": 0.35,
+    "area_m2": 0.7,
+    "aspect_ratio": 5.714285714285714,
+    "oswald_e": 0.66,
+    "wing_incidence_deg": 4.5,
+    "wing_washout_deg": 0.0,
+    "cg_x_m": 0.0875,
+    "wing_ac_x_m": 0.0875,
+    "tail_arm_m": 0.9022594117055305,
+    "htail_area_m2": 0.12247315233907057,
+    "htail_incidence_deg": -4.746817781379969
+  },
+  "inertia_kgm2": {
+    "ixx": 0.5,
+    "iyy": 0.8,
+    "izz": 1.2,
+    "ixz": 0.05
+  },
+  "controls": {
+    "elevator_limit_deg": 25.0,
+    "aileron_limit_deg": 20.0,
+    "rudder_limit_deg": 25.0,
+    "flap_limit_deg": 40.0
+  },
+  "propulsion": {
+    "n_props": 10,
+    "diameter_m": 0.1397,
+    "centers_y_m": [-0.8921, -0.7178, -0.5436, -0.3695, -0.1953, 0.1953, 0.3695, 0.5436, 0.7178, 0.8921],
+    "axial_x_m": -0.0875,
+    "thrust_axis_body": [1.0, 0.0, 0.0],
+    "rpm_grid": [3200, 4000, 4800, 5600, 6400, 7200, 8000, 8800, 9600, 10400, 11200, 12000, 12440],
+    "thrust_n_grid": [0.186326, 0.294199, 0.421686, 0.568786, 0.745305, 0.941438, 1.166991, 1.412158, 1.676937, 1.971137, 2.284949, 2.618376, 2.814509],
+    "cp_static_grid": [0.071601, 0.069384, 0.071098, 0.070668, 0.069902, 0.070456, 0.069937, 0.070238, 0.070184, 0.070266, 0.070101, 0.070118, 0.070569]
+  },
+  "aero": {
+    "cl0": 0.18,
+    "cl_alpha_per_rad": 5.1,
+    "cl_q": 3.5,
+    "cl_de_per_rad": 0.35,
+    "cd0": 0.065,
+    "cm0": 0.03,
+    "cm_alpha_per_rad": -0.85,
+    "cm_q": -14.0,
+    "cm_de_per_rad": -1.1,
+    "cy_beta_per_rad": -0.45,
+    "cl_beta_per_rad": -0.08,
+    "cn_beta_per_rad": 0.07,
+    "cl_p": -0.45,
+    "cn_r": -0.2
+  },
+  "blown_wing_model": {
+    "blown_span_fraction": 0.5588000000000002,
+    "prop_to_wing_leading_edge_m": 0.0875,
+    "wake_decay_length_m": 0.2625,
+    "lift_gain": 0.22,
+    "drag_gain": 0.03,
+    "pitch_gain": -0.045,
+    "flap_lift_gain": 1.2,
+    "flap_drag_gain": 0.4,
+    "flap_pitch_gain": -0.6
+  },
+  "references": {
+    "aerodynamics": "Anderson, Fundamentals of Aerodynamics, 5th ed.",
+    "flight_dynamics": "Nelson, Flight Stability and Automatic Control",
+    "airfoil_sections": "Abbott and von Doenhoff, Theory of Wing Sections",
+    "blown_wing": "Agrawal et al. (2019), Wind Tunnel Testing of a Blown Flap Wing",
+    "upstream_geometry": "AA146 capstone Stage 2 and Stage 3 output CSV artifacts"
+  }
+}
