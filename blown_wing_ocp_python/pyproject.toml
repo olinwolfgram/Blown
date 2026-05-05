@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blown-wing-ocp"
+version = "0.1.0"
+description = "Simplified blown-wing aircraft dynamics and optimal control project"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "scipy>=1.11",
+  "matplotlib>=3.7",
+]
+
+[project.scripts]
+bw-ocp-demo = "blown_wing_ocp.demo:main"
+bw-ocp-freeze-vehicle = "blown_wing_ocp.vehicle:freeze_vehicle_cli"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
