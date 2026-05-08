@@ -1,25 +1,16 @@
-# MATLAB / Simulink generated artifacts
-slprj/
-*.slxc
-
-# MATLAB outputs and caches
-*.asv
-*.mat
-
-# Python caches and virtual envs
 __pycache__/
 *.pyc
 .venv/
 venv/
-
-# Python packaging artifacts
-*.egg-info/
 build/
 dist/
-
-# Local output folders
+*.egg-info/
 outputs/
-
-# OS/editor noise
-.DS_Store
 .ipynb_checkpoints/
+.DS_Store
+OLD/
+ghost/
+reference_cesium/
+docs/
+AA146-Capstone/
+simulink-agentic-toolkit/

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blown Wing Cesium Playback</title>
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.137/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.137/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <link href="./style.css" rel="stylesheet">
+</head>
+<body>
+    <div id="sidebar">
+        <h2>Blown Wing Playback</h2>
+
+        <div class="section">
+            <h3>Cesium Token</h3>
+            <label for="ionToken">Ion access token</label>
+            <input id="ionToken" type="password" placeholder="Paste your Cesium Ion token">
+            <button id="saveTokenBtn" class="secondary">Save Token</button>
+            <p class="hint">Stored locally in your browser only.</p>
+        </div>
+
+        <div class="section">
+            <h3>World Origin</h3>
+            <label for="originLat">Latitude (deg)</label>
+            <input id="originLat" type="number" step="0.000001">
+            <label for="originLon">Longitude (deg)</label>
+            <input id="originLon" type="number" step="0.000001">
+            <label for="originAlt">Altitude MSL (m)</label>
+            <input id="originAlt" type="number" step="0.1">
+            <p class="hint">Defaults to Lake Lagunita, Stanford. The CSV can be replayed from any chosen start point.</p>
+        </div>
+
+        <div class="section">
+            <h3>Flight History CSV</h3>
+            <input type="file" id="csvFile" accept=".csv">
+            <button id="visualizeBtn">Visualize Flight</button>
+            <p class="hint">Use the exported `*_control_flight.csv` files from `outputs/flight_history/`.</p>
+        </div>
+
+        <div id="status">Waiting for token and CSV...</div>
+
+        <div class="section compact">
+            <h3>Summary</h3>
+            <div class="stat-row"><span>Rows</span><span id="rowCount">0</span></div>
+            <div class="stat-row"><span>Duration (s)</span><span id="durationVal">0.0</span></div>
+            <div class="stat-row"><span>Controller</span><span id="controllerVal">--</span></div>
+        </div>
+
+        <div class="section compact">
+            <h3>Live Telemetry</h3>
+            <div class="telemetry-grid">
+                <span>Time</span><span id="telemetryTime">--</span>
+                <span>Lat</span><span id="telemetryLat">--</span>
+                <span>Lon</span><span id="telemetryLon">--</span>
+                <span>Alt</span><span id="telemetryAlt">--</span>
+                <span>Roll</span><span id="telemetryRoll">--</span>
+                <span>Pitch</span><span id="telemetryPitch">--</span>
+                <span>Yaw</span><span id="telemetryYaw">--</span>
+                <span>u / v / w</span><span id="telemetryUVW">--</span>
+                <span>p / q / r</span><span id="telemetryPQR">--</span>
+                <span>RPM L / R</span><span id="telemetryRpmLR">--</span>
+                <span>Elev / Ail / Rud</span><span id="telemetrySurfaces">--</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="hud">
+        <div class="hud-label">PLAYBACK</div>
+        <div id="hudText">--</div>
+    </div>
+
+    <div id="cesiumContainer"></div>
+
+    <script src="./app.js" defer></script>
+</body>
+</html>
