@@ -10,9 +10,7 @@ controls work. The current focus is:
 5. infinite-horizon and finite-horizon LQR demos,
 6. CSV export for replay,
 7. a browser-based Cesium playback app.
-
-The old work has been archived under `OLD/` and `ghost/`.
-
+   
 ## Repository layout
 
 ```text
