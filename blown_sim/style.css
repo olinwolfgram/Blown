@@ -1,0 +1,156 @@
+body {
+    margin: 0;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #000;
+}
+
+#cesiumContainer {
+    flex: 1 1 auto;
+}
+
+#sidebar {
+    width: 320px;
+    background: rgba(18, 22, 28, 0.97);
+    color: #fff;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    z-index: 10;
+    border-right: 1px solid #2e3946;
+    box-shadow: 6px 0 18px rgba(0, 0, 0, 0.45);
+    overflow-y: auto;
+}
+
+h2 {
+    margin: 0;
+    text-align: center;
+    color: #66c2ff;
+    letter-spacing: 0.04em;
+}
+
+h3 {
+    margin: 0 0 10px 0;
+    color: #f4c95d;
+    font-size: 1rem;
+}
+
+.section {
+    background: #202730;
+    border: 1px solid #37424f;
+    border-radius: 8px;
+    padding: 14px;
+}
+
+.section.compact {
+    padding: 12px;
+}
+
+label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 0.85rem;
+    color: #cfe5ff;
+}
+
+input[type="number"],
+input[type="password"],
+input[type="file"] {
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 10px;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #4a5664;
+    background: #11161c;
+    color: #fff;
+}
+
+button {
+    width: 100%;
+    padding: 11px 12px;
+    border: none;
+    border-radius: 6px;
+    background: #2aa66b;
+    color: #fff;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+button:hover {
+    background: #34c27d;
+}
+
+button.secondary {
+    background: #376b9a;
+}
+
+button.secondary:hover {
+    background: #4583bb;
+}
+
+.hint {
+    margin: 0;
+    color: #aab7c5;
+    font-size: 0.78rem;
+}
+
+#status {
+    text-align: center;
+    padding: 10px;
+    border-radius: 6px;
+    background: #11161c;
+    border: 1px solid #2f3945;
+    color: #cfd7e2;
+    font-weight: 600;
+}
+
+.stat-row,
+.telemetry-grid {
+    font-size: 0.84rem;
+}
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.telemetry-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 10px;
+    color: #d8e4ef;
+}
+
+#hud {
+    position: absolute;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 999;
+    background: rgba(0, 0, 0, 0.55);
+    border: 2px solid #00d5ff;
+    border-radius: 6px;
+    padding: 8px 26px;
+    text-align: center;
+    backdrop-filter: blur(4px);
+    pointer-events: none;
+}
+
+.hud-label {
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    color: #a9c7d8;
+}
+
+#hudText {
+    color: #fff;
+    font-size: 22px;
+    font-weight: 700;
+    font-family: "Courier New", monospace;
+}
