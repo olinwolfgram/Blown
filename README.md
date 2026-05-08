@@ -362,7 +362,3 @@ python blown_sim/serve.py
 
 - The Python model is the source of truth for all dynamics and control logic.
 - Cesium is only used for playback / visualization.
-- `outputs/` is intentionally ignored by Git.
-- `OLD/`, `ghost/`, `reference_cesium/`, `AA146-Capstone/`, and
-  `simulink-agentic-toolkit/` are not part of the minimal runnable Python/Cesium
-  project snapshot.
