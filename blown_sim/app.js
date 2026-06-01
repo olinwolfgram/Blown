@@ -50,6 +50,10 @@ const ui = {
     telemetryRpmLR: document.getElementById("telemetryRpmLR"),
     telemetrySurfaces: document.getElementById("telemetrySurfaces"),
     hudText: document.getElementById("hudText"),
+    sidebarMotorBars: document.getElementById("sidebarMotorBars"),
+    sidebarSurfaceBars: document.getElementById("sidebarSurfaceBars"),
+    sidebarMotorScaleText: document.getElementById("sidebarMotorScaleText"),
+    sidebarSurfaceScaleText: document.getElementById("sidebarSurfaceScaleText"),
 };
 
 let viewer = null;
@@ -57,6 +61,7 @@ let activeEntity = null;
 let activeRows = [];
 let activeOrigin = { ...defaultOrigin };
 let tickHandler = null;
+let activeControlHud = null;
 
 window.addEventListener("error", (event) => {
     if (ui.status) {
@@ -255,6 +260,7 @@ function normalizeRows(rawRows, origin) {
             collectiveRpm: parseNumber(rawRow, "collective_rpm"),
             rpmLeft: parseNumber(rawRow, "rpm_left"),
             rpmRight: parseNumber(rawRow, "rpm_right"),
+            motorRpms: Array.from({ length: 10 }, (_, motorIdx) => parseNumber(rawRow, `rpm_${motorIdx + 1}`)),
             elevatorDeg: parseNumber(rawRow, "elevator_deg"),
             aileronDeg: parseNumber(rawRow, "aileron_deg"),
             rudderDeg: parseNumber(rawRow, "rudder_deg"),
@@ -270,6 +276,181 @@ function normalizeRows(rawRows, origin) {
         && Number.isFinite(row.lonDeg)
         && Number.isFinite(row.altM)
     ));
+}
+
+function clearElement(element) {
+    while (element.firstChild) {
+        element.removeChild(element.firstChild);
+    }
+}
+
+function finiteOrZero(value) {
+    return Number.isFinite(value) ? value : 0.0;
+}
+
+function computeCenteredScale(values, fallback) {
+    let maxAbs = 0.0;
+    values.forEach((value) => {
+        if (Number.isFinite(value)) {
+            maxAbs = Math.max(maxAbs, Math.abs(value));
+        }
+    });
+    return Math.max(maxAbs, fallback);
+}
+
+function createBarWidget(label, kind, units) {
+    const card = document.createElement("div");
+    card.className = "control-card";
+
+    const meta = document.createElement("div");
+    meta.className = "control-meta";
+
+    const labelEl = document.createElement("span");
+    labelEl.className = "control-label";
+    labelEl.textContent = label;
+
+    const valueEl = document.createElement("span");
+    valueEl.className = "control-value";
+    valueEl.textContent = `0.0 ${units}`;
+
+    meta.appendChild(labelEl);
+    meta.appendChild(valueEl);
+
+    const centerLabel = document.createElement("div");
+    centerLabel.className = "baseline-label";
+    centerLabel.textContent = units === "RPM" ? "-- RPM" : "-- deg";
+
+    const track = document.createElement("div");
+    track.className = "center-bar";
+
+    const fill = document.createElement("div");
+    fill.className = `bar-fill ${kind}`;
+    track.appendChild(fill);
+
+    card.appendChild(meta);
+    card.appendChild(centerLabel);
+    card.appendChild(track);
+
+    return { card, valueEl, fill, centerLabel, units };
+}
+
+function updateBarWidget(widget, value, scale) {
+    const safeValue = finiteOrZero(value);
+    const safeScale = Math.max(scale, 1e-6);
+    const normalized = Math.max(-1.0, Math.min(1.0, safeValue / safeScale));
+    const magnitudePct = Math.abs(normalized) * 50.0;
+
+    widget.valueEl.textContent = `${safeValue >= 0 ? "+" : ""}${formatNumber(safeValue, 1)} ${widget.units}`;
+    widget.fill.style.width = `${magnitudePct}%`;
+    widget.fill.style.left = normalized >= 0 ? "50%" : `${50.0 - magnitudePct}%`;
+}
+
+function setupControlHud(rows) {
+    if (ui.sidebarMotorBars) {
+        clearElement(ui.sidebarMotorBars);
+    }
+    if (ui.sidebarSurfaceBars) {
+        clearElement(ui.sidebarSurfaceBars);
+    }
+
+    const baselineRow = rows.length ? rows[rows.length - 1] : null;
+    const motorBaseline = baselineRow ? baselineRow.motorRpms.map((value) => finiteOrZero(value)) : [];
+    const hasMotors = rows.some((row) => row.motorRpms.some((value) => Number.isFinite(value)));
+    const sidebarMotorWidgets = [];
+    let motorScale = 50.0;
+
+    if (hasMotors) {
+        const motorDeltas = [];
+        rows.forEach((row) => {
+            row.motorRpms.forEach((value, idx) => {
+                if (Number.isFinite(value)) {
+                    motorDeltas.push(value - motorBaseline[idx]);
+                }
+            });
+        });
+        motorScale = computeCenteredScale(motorDeltas, 50.0);
+        for (let idx = 0; idx < 10; idx += 1) {
+            if (ui.sidebarMotorBars) {
+                const sidebarWidget = createBarWidget(`M${idx + 1}`, "motor", "RPM");
+                sidebarWidget.centerLabel.textContent = `${formatNumber(motorBaseline[idx], 0)} RPM`;
+                ui.sidebarMotorBars.appendChild(sidebarWidget.card);
+                sidebarMotorWidgets.push(sidebarWidget);
+            }
+        }
+        if (ui.sidebarMotorScaleText) {
+            ui.sidebarMotorScaleText.textContent = `Motor scale: +/- ${formatNumber(motorScale, 0)} RPM`;
+        }
+    } else {
+        if (ui.sidebarMotorScaleText) {
+            ui.sidebarMotorScaleText.textContent = "Motor scale: unavailable";
+        }
+    }
+
+    const surfaceDefs = [
+        { key: "elevatorDeg", label: "Elev", units: "deg" },
+        { key: "aileronDeg", label: "Ail", units: "deg" },
+        { key: "rudderDeg", label: "Rud", units: "deg" },
+        { key: "flapDeg", label: "Flap", units: "deg" },
+    ].filter((def) => rows.some((row) => Number.isFinite(row[def.key])));
+
+    const surfaceBaseline = Object.fromEntries(
+        surfaceDefs.map((def) => [def.key, baselineRow ? finiteOrZero(baselineRow[def.key]) : 0.0]),
+    );
+    const surfaceDeltas = [];
+    surfaceDefs.forEach((def) => {
+        rows.forEach((row) => {
+            if (Number.isFinite(row[def.key])) {
+                surfaceDeltas.push(row[def.key] - surfaceBaseline[def.key]);
+            }
+        });
+    });
+    const surfaceScale = computeCenteredScale(surfaceDeltas, 2.0);
+    const surfaceWidgets = surfaceDefs.map((def) => {
+        let sidebarWidget = null;
+        if (ui.sidebarSurfaceBars) {
+            sidebarWidget = createBarWidget(def.label, "surface", def.units);
+            sidebarWidget.centerLabel.textContent = `${formatNumber(surfaceBaseline[def.key], 1)} deg`;
+            ui.sidebarSurfaceBars.appendChild(sidebarWidget.card);
+        }
+        return { ...def, sidebarWidget };
+    });
+    if (ui.sidebarSurfaceScaleText) {
+        ui.sidebarSurfaceScaleText.textContent = `Surface scale: +/- ${formatNumber(surfaceScale, 1)} deg`;
+    }
+
+    const visible = hasMotors || surfaceWidgets.length > 0;
+    activeControlHud = visible ? {
+        motorBaseline,
+        motorScale,
+        sidebarMotorWidgets,
+        surfaceBaseline,
+        surfaceScale,
+        surfaceWidgets,
+    } : null;
+}
+
+function updateControlHud(row) {
+    if (!activeControlHud) {
+        return;
+    }
+
+    activeControlHud.sidebarMotorWidgets.forEach((widget, idx) => {
+        if (activeControlHud.sidebarMotorWidgets[idx]) {
+            const value = Number.isFinite(row.motorRpms[idx])
+                ? row.motorRpms[idx] - activeControlHud.motorBaseline[idx]
+                : 0.0;
+            updateBarWidget(widget, value, activeControlHud.motorScale);
+        }
+    });
+
+    activeControlHud.surfaceWidgets.forEach((def) => {
+        const value = Number.isFinite(row[def.key])
+            ? row[def.key] - activeControlHud.surfaceBaseline[def.key]
+            : 0.0;
+        if (def.sidebarWidget) {
+            updateBarWidget(def.sidebarWidget, value, activeControlHud.surfaceScale);
+        }
+    });
 }
 
 function buildPlayback(rows) {
@@ -371,6 +552,7 @@ function updateTelemetry(row) {
         `t=${formatNumber(row.timeS, 1)} s`,
         `hdg=${formatNumber(row.headingDeg, 1)} deg`,
     ].join(" | ");
+    updateControlHud(row);
 }
 
 function rowAtTime(currentTime) {
@@ -418,6 +600,7 @@ function visualizeRows(rows, origin) {
     fgViewer.entities.removeAll();
     activeRows = rows;
     activeOrigin = origin;
+    setupControlHud(rows);
 
     const playback = buildPlayback(rows);
     activeEntity = fgViewer.entities.add({

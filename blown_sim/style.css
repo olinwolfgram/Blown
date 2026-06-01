@@ -154,3 +154,139 @@ button.secondary:hover {
     font-weight: 700;
     font-family: "Courier New", monospace;
 }
+
+#controlsHud {
+    position: absolute;
+    right: 18px;
+    bottom: 18px;
+    z-index: 999;
+    width: 360px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+}
+
+#controlsHud.hidden {
+    display: none;
+}
+
+.controls-panel {
+    background: rgba(8, 12, 18, 0.72);
+    border: 1px solid rgba(102, 194, 255, 0.42);
+    border-radius: 8px;
+    padding: 10px 12px 12px 12px;
+    backdrop-filter: blur(5px);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+}
+
+.controls-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.controls-title {
+    color: #f4c95d;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+}
+
+.controls-scale {
+    color: #a9c7d8;
+    font-size: 0.72rem;
+}
+
+.controls-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 10px;
+}
+
+.sidebar-controls-grid {
+    margin-top: 8px;
+    margin-bottom: 10px;
+}
+
+.surface-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+}
+
+.sidebar-scale {
+    margin-top: 2px;
+    margin-bottom: 6px;
+}
+
+.control-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 7px 8px 8px 8px;
+}
+
+.control-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 2px;
+    font-size: 0.74rem;
+}
+
+.control-label {
+    color: #dce8f2;
+    font-weight: 700;
+}
+
+.control-value {
+    color: #c4f1ff;
+    font-family: "Courier New", monospace;
+}
+
+.baseline-label {
+    margin-bottom: 4px;
+    text-align: center;
+    font-size: 0.62rem;
+    line-height: 1;
+    color: rgba(255, 255, 255, 0.68);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    font-family: "Courier New", monospace;
+}
+
+.center-bar {
+    position: relative;
+    height: 18px;
+    border-radius: 999px;
+    background:
+        linear-gradient(90deg,
+            rgba(255, 255, 255, 0.10) 0%,
+            rgba(255, 255, 255, 0.06) 49.4%,
+            rgba(255, 255, 255, 0.22) 49.4%,
+            rgba(255, 255, 255, 0.22) 50.6%,
+            rgba(255, 255, 255, 0.06) 50.6%,
+            rgba(255, 255, 255, 0.10) 100%);
+    overflow: hidden;
+}
+
+.bar-fill {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    width: 0%;
+    border-radius: 999px;
+    transition: left 0.05s linear, width 0.05s linear, background 0.05s linear;
+}
+
+.bar-fill.motor {
+    background: linear-gradient(90deg, #33d17a, #22d3ee);
+}
+
+.bar-fill.surface {
+    background: linear-gradient(90deg, #f59e0b, #fb7185);
+}

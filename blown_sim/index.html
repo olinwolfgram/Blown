@@ -6,7 +6,7 @@
     <title>Blown Wing Cesium Playback</title>
     <script src="https://cesium.com/downloads/cesiumjs/releases/1.137/Build/Cesium/Cesium.js"></script>
     <link href="https://cesium.com/downloads/cesiumjs/releases/1.137/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
-    <link href="./style.css" rel="stylesheet">
+    <link href="./style.css?v=20260601_controls" rel="stylesheet">
 </head>
 <body>
     <div id="sidebar">
@@ -63,6 +63,14 @@
                 <span>Elev / Ail / Rud</span><span id="telemetrySurfaces">--</span>
             </div>
         </div>
+
+        <div class="section compact">
+            <h3>Live Controls</h3>
+            <div class="controls-scale sidebar-scale" id="sidebarMotorScaleText">Motor scale: --</div>
+            <div class="controls-grid sidebar-controls-grid" id="sidebarMotorBars"></div>
+            <div class="controls-scale sidebar-scale" id="sidebarSurfaceScaleText">Surface scale: --</div>
+            <div class="surface-grid" id="sidebarSurfaceBars"></div>
+        </div>
     </div>
 
     <div id="hud">
@@ -72,6 +80,6 @@
 
     <div id="cesiumContainer"></div>
 
-    <script src="./app.js" defer></script>
+    <script src="./app.js?v=20260601_controls" defer></script>
 </body>
 </html>

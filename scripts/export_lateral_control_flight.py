@@ -22,8 +22,8 @@ from blown_aircraft.lqr import design_lqr
 from blown_aircraft.operating_point import build_symmetric_cruise_operating_point, linearize_about_cruise
 
 
-def rk4_step(x: np.ndarray, u: np.ndarray, dt: float, vehicle) -> np.ndarray:
-    f = lambda xk: lateral_state_derivative(xk, u, vehicle)
+def rk4_step(x: np.ndarray, u: np.ndarray, dt: float, vehicle, *, w_trim_mps: float, theta_trim_rad: float) -> np.ndarray:
+    f = lambda xk: lateral_state_derivative(xk, u, vehicle, w_trim_mps=w_trim_mps, theta_trim_rad=theta_trim_rad)
     k1 = f(x)
     k2 = f(x + 0.5 * dt * k1)
     k3 = f(x + 0.5 * dt * k2)
@@ -56,8 +56,8 @@ def main() -> None:
     ad_lat = lat_lin["Ad"]
     bd_diff = (lat_lin["Bd"][:, [1]] - lat_lin["Bd"][:, [0]]).copy()
 
-    state_idx = (1, 2, 3, 4, 5)
-    q_mat = np.diag([6.0, 25.0, 8.0, 30.0, 18.0])
+    state_idx = (2, 3, 4, 5, 6, 7)
+    q_mat = np.diag([8.0, 6.0, 25.0, 8.0, 30.0, 18.0])
     r_mat = np.array([[1.0e-3]])
 
     t = np.arange(0.0, args.t_final + 0.5 * args.dt, args.dt)
@@ -89,19 +89,22 @@ def main() -> None:
 
     x_trim = op.lateral_state.copy()
     u_trim = op.lateral_control.copy()
+    w_trim_mps = float(op.longitudinal_state[3])
+    theta_trim_rad = float(op.longitudinal_state[4])
     rpm_trim = float(u_trim[0])
     rpm_grid = np.asarray(vehicle.propulsion["rpm_grid"], dtype=float)
     rpm_min = float(rpm_grid.min())
     rpm_max = float(rpm_grid.max())
 
     x0 = x_trim.copy()
-    x0[1] += 0.40
-    x0[2] += np.deg2rad(5.0)
-    x0[3] += np.deg2rad(8.0)
-    x0[4] += np.deg2rad(4.0)
-    x0[5] += np.deg2rad(2.0)
+    x0[2] += 0.25
+    x0[3] += 0.40
+    x0[4] += np.deg2rad(5.0)
+    x0[5] += np.deg2rad(8.0)
+    x0[6] += np.deg2rad(4.0)
+    x0[7] += np.deg2rad(2.0)
 
-    x_hist = np.zeros((len(t), 6), dtype=float)
+    x_hist = np.zeros((len(t), 8), dtype=float)
     u_hist = np.zeros((len(t), 4), dtype=float)
     u_diff_hist = np.zeros(len(t), dtype=float)
     x_hist[0] = x0
@@ -120,20 +123,20 @@ def main() -> None:
 
         u_hist[k] = uk
         u_diff_hist[k] = delta_rpm_diff
-        x_hist[k + 1] = rk4_step(xk, uk, args.dt, vehicle)
+        x_hist[k + 1] = rk4_step(xk, uk, args.dt, vehicle, w_trim_mps=w_trim_mps, theta_trim_rad=theta_trim_rad)
 
     u_hist[-1] = u_hist[-2]
     u_diff_hist[-1] = u_diff_hist[-2]
     x_ref = np.tile(x_trim, (len(t), 1))
     x_dev = x_hist - x_ref
 
-    east_m = op.speed_mps * t
-    north_m = x_hist[:, 0]
+    east_m = x_hist[:, 0]
+    north_m = x_hist[:, 1]
     up_m = np.full(len(t), lon_trim[1], dtype=float)
     lat_deg, lon_deg, alt_m = local_offsets_to_geodetic(east_m, north_m, up_m, args.lat, args.lon, args.alt)
 
-    phi_deg = np.rad2deg(x_hist[:, 2])
-    psi_deg = np.rad2deg(x_hist[:, 3])
+    phi_deg = np.rad2deg(x_hist[:, 4])
+    psi_deg = np.rad2deg(x_hist[:, 5])
     heading_deg = 90.0 + psi_deg
     pitch_deg = np.full(len(t), np.rad2deg(lon_trim[4]), dtype=float)
 
@@ -188,18 +191,18 @@ def main() -> None:
                 "north_m": f"{north_m[k]:.6f}",
                 "up_m": f"{up_m[k]:.6f}",
                 "x_m": f"{east_m[k]:.6f}",
-                "y_m": f"{x_hist[k, 0]:.6f}",
+                "y_m": f"{x_hist[k, 1]:.6f}",
                 "h_m": f"{lon_trim[1]:.6f}",
-                "u_mps": f"{op.speed_mps:.6f}",
-                "v_mps": f"{x_hist[k, 1]:.6f}",
+                "u_mps": f"{x_hist[k, 2]:.6f}",
+                "v_mps": f"{x_hist[k, 3]:.6f}",
                 "w_mps": f"{lon_trim[3]:.6f}",
                 "roll_deg": f"{phi_deg[k]:.6f}",
                 "pitch_deg": f"{pitch_deg[k]:.6f}",
                 "yaw_deg": f"{psi_deg[k]:.6f}",
                 "heading_deg": f"{heading_deg[k]:.6f}",
-                "p_deg_s": f"{np.rad2deg(x_hist[k, 4]):.6f}",
+                "p_deg_s": f"{np.rad2deg(x_hist[k, 6]):.6f}",
                 "q_deg_s": "0.000000",
-                "r_deg_s": f"{np.rad2deg(x_hist[k, 5]):.6f}",
+                "r_deg_s": f"{np.rad2deg(x_hist[k, 7]):.6f}",
                 "collective_rpm": f"{collective:.6f}",
                 "rpm_left": f"{u_hist[k, 0]:.6f}",
                 "rpm_right": f"{u_hist[k, 1]:.6f}",
@@ -208,12 +211,12 @@ def main() -> None:
                 "rudder_deg": "0.000000",
                 "flap_deg": f"{np.rad2deg(lon_ctrl[2]):.6f}",
                 "controller": args.controller,
-                "delta_y_m": f"{x_dev[k, 0]:.6f}",
-                "delta_v_mps": f"{x_dev[k, 1]:.6f}",
-                "delta_phi_deg": f"{np.rad2deg(x_dev[k, 2]):.6f}",
-                "delta_psi_deg": f"{np.rad2deg(x_dev[k, 3]):.6f}",
-                "delta_p_deg_s": f"{np.rad2deg(x_dev[k, 4]):.6f}",
-                "delta_r_deg_s": f"{np.rad2deg(x_dev[k, 5]):.6f}",
+                "delta_y_m": f"{x_dev[k, 1]:.6f}",
+                "delta_v_mps": f"{x_dev[k, 3]:.6f}",
+                "delta_phi_deg": f"{np.rad2deg(x_dev[k, 4]):.6f}",
+                "delta_psi_deg": f"{np.rad2deg(x_dev[k, 5]):.6f}",
+                "delta_p_deg_s": f"{np.rad2deg(x_dev[k, 6]):.6f}",
+                "delta_r_deg_s": f"{np.rad2deg(x_dev[k, 7]):.6f}",
                 "delta_rpm_diff": f"{u_diff_hist[k]:.6f}",
             }
         )

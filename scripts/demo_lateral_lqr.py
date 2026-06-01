@@ -27,26 +27,27 @@ def main() -> None:
     a_lat = lat["A"]
     b_lat = lat["B"]
 
-    # Build a differential-thrust input channel:
-    # rpm_left = rpm_trim - delta_rpm_diff
-    # rpm_right = rpm_trim + delta_rpm_diff
-    # so the effective input column is B_right - B_left.
+    # Build a three-input lateral control channel:
+    # [delta_rpm_diff, aileron, rudder]
+    # where rpm_left = rpm_trim - delta_rpm_diff and
+    # rpm_right = rpm_trim + delta_rpm_diff.
     b_diff = (b_lat[:, [1]] - b_lat[:, [0]]).copy()
+    b_ctrl = np.hstack([b_diff, b_lat[:, [2]], b_lat[:, [3]]])
 
-    # Use the dynamic lateral-directional states and exclude y-position.
-    # State ordering in the reduced lateral model:
-    # [y, v, phi, psi, p, r]
-    state_idx = (1, 2, 3, 4, 5)  # [v, phi, psi, p, r]
-    q_mat = np.diag([6.0, 25.0, 8.0, 30.0, 18.0])
-    r_mat = np.array([[1.0e-3]])
+    # Use the dynamic planar states and exclude x/y position.
+    # State ordering in the planar lateral model:
+    # [x, y, u, v, phi, psi, p, r]
+    state_idx = (2, 3, 4, 5, 6, 7)  # [u, v, phi, psi, p, r]
+    q_mat = np.diag([8.0, 6.0, 25.0, 8.0, 30.0, 18.0])
+    r_mat = np.diag([1.0e-3, 2.0, 2.0])
 
     lqr = design_lqr(
         a_lat,
-        b_diff,
+        b_ctrl,
         q_mat,
         r_mat,
         state_indices=state_idx,
-        input_indices=(0,),
+        input_indices=(0, 1, 2),
         discrete_time=False,
     )
 
@@ -59,21 +60,20 @@ def main() -> None:
     print()
 
     print("Lateral model note")
-    print("  The current controller is intentionally built around differential thrust.")
-    print("  Aileron and rudder derivatives are present in the aerodynamic model now,")
-    print("  but this first-pass LQR uses the differential-thrust channel only.")
+    print("  The controller now uses the lateral actuator set")
+    print("  [delta_rpm_diff, aileron, rudder].")
     print()
 
     print("Selected lateral subsystem for LQR")
-    print("  states: [v, phi, psi, p, r]")
-    print("  input : [delta_rpm_diff]")
+    print("  states: [u, v, phi, psi, p, r]")
+    print("  inputs: [delta_rpm_diff, aileron, rudder]")
     print()
 
     print("Full reduced lateral A")
     print(a_lat)
     print()
-    print("Effective differential-thrust B column")
-    print(b_diff)
+    print("Effective lateral-control B matrix")
+    print(b_ctrl)
     print()
     print("Continuous-time lateral LQR gain K")
     print(lqr.k_gain)

@@ -17,6 +17,8 @@ from blown_aircraft.flight_history import (
     write_flight_history_csv,
 )
 from blown_aircraft.geometry import load_vehicle
+from blown_aircraft.ilqr import rollout_ilqr_policy, solve_ilqr
+from blown_aircraft.jax_longitudinal import build_jax_longitudinal_dynamics
 from blown_aircraft.longitudinal import longitudinal_state_derivative
 from blown_aircraft.lqr import design_lqr
 from blown_aircraft.operating_point import build_symmetric_cruise_operating_point, linearize_about_cruise
@@ -44,17 +46,24 @@ def reference_trajectory(op, t: np.ndarray) -> np.ndarray:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Export longitudinal closed-loop flight history for Cesium playback.")
-    parser.add_argument("--controller", choices=("lqr", "finite"), default="lqr")
+    parser.add_argument("--controller", choices=("lqr", "finite", "ilqr"), default="lqr")
     parser.add_argument("--lat", type=float, default=lake_lagunita_reference()["lat_deg"])
     parser.add_argument("--lon", type=float, default=lake_lagunita_reference()["lon_deg"])
     parser.add_argument("--alt", type=float, default=lake_lagunita_reference()["alt_m"])
     parser.add_argument("--dt", type=float, default=0.02)
     parser.add_argument("--t-final", type=float, default=12.0)
+    parser.add_argument("--max-iter", type=int, default=5)
+    parser.add_argument("--rollout-mode", choices=("closed-loop", "open-loop"), default="closed-loop")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    print(
+        f"[export] controller={args.controller} | t_final={args.t_final:.2f} s | dt={args.dt:.3f} s",
+        flush=True,
+    )
+    print("[export] loading vehicle and operating point...", flush=True)
     vehicle = load_vehicle()
     op = build_symmetric_cruise_operating_point(vehicle, speed_mps=10.0, flight_path_angle_rad=0.0, flap_rad=0.0)
     lin = linearize_about_cruise(vehicle, speed_mps=10.0, flight_path_angle_rad=0.0, flap_rad=0.0, dt=args.dt)["longitudinal"]
@@ -66,8 +75,10 @@ def main() -> None:
 
     t = np.arange(0.0, args.t_final + 0.5 * args.dt, args.dt)
     horizon_steps = len(t) - 1
+    print(f"[export] horizon steps={horizon_steps}", flush=True)
 
     if args.controller == "lqr":
+        print("[export] designing infinite-horizon LQR...", flush=True)
         controller = design_lqr(
             lin["A"],
             lin["B"],
@@ -78,7 +89,9 @@ def main() -> None:
             discrete_time=False,
         )
         finite_horizon = None
-    else:
+        ilqr_result = None
+    elif args.controller == "finite":
+        print("[export] solving finite-horizon LQR...", flush=True)
         finite_horizon = solve_finite_horizon_lqr(
             lin["Ad"],
             lin["Bd"],
@@ -90,6 +103,11 @@ def main() -> None:
             input_indices=input_idx,
         )
         controller = None
+        ilqr_result = None
+    else:
+        controller = None
+        finite_horizon = None
+        ilqr_result = None
 
     x_trim = op.longitudinal_state.copy()
     u_trim = op.longitudinal_control.copy()
@@ -106,24 +124,108 @@ def main() -> None:
 
     x_hist = np.zeros((len(t), 6), dtype=float)
     u_hist = np.zeros((len(t), 3), dtype=float)
-    x_hist[0] = x0
 
-    for k in range(len(t) - 1):
-        xk = x_hist[k]
-        dx_sub = xk[list(state_idx)] - x_trim[list(state_idx)]
-        if args.controller == "lqr":
-            du = -controller.k_gain @ dx_sub
+    if args.controller in {"lqr", "finite"}:
+        print(f"[export] rolling out {args.controller} controller...", flush=True)
+        x_hist[0] = x0
+        for k in range(len(t) - 1):
+            xk = x_hist[k]
+            dx_sub = xk[list(state_idx)] - x_trim[list(state_idx)]
+            if args.controller == "lqr":
+                du = -controller.k_gain @ dx_sub
+            else:
+                du = -finite_horizon.k_seq[k] @ dx_sub
+
+            uk = u_trim.copy()
+            uk[0] = float(np.clip(u_trim[0] + du[0], rpm_min, rpm_max))
+            uk[1] = float(np.clip(u_trim[1] + du[1], -lim["elevator"], lim["elevator"]))
+            uk[2] = float(np.clip(u_trim[2], 0.0, lim["flap"]))
+            u_hist[k] = uk
+            x_hist[k + 1] = rk4_step(xk, uk, args.dt, vehicle)
+        u_hist[-1] = u_hist[-2]
+    else:
+        print("[export] building JAX longitudinal dynamics...", flush=True)
+        dynamics, dynamics_jacobian = build_jax_longitudinal_dynamics(vehicle, args.dt)
+        u_lower = np.array([rpm_min, -lim["elevator"]], dtype=float)
+        u_upper = np.array([rpm_max, lim["elevator"]], dtype=float)
+        x_ref = reference_trajectory(op, t)
+        u_ref = np.repeat(u_trim[None, :2], horizon_steps, axis=0)
+
+        ilqr_q = np.diag([2.0, 1.0, 12.0, 8.0, 18.0, 8.0])
+        ilqr_r = np.diag([1.0e-6, 1.2])
+        ilqr_qf = 25.0 * ilqr_q
+
+        print("[export] building LQR warm start for iLQR...", flush=True)
+        warm_lqr = design_lqr(
+            lin["A"],
+            lin["B"],
+            q_mat,
+            r_mat,
+            state_indices=state_idx,
+            input_indices=input_idx,
+            discrete_time=False,
+        )
+
+        u_init = np.zeros((horizon_steps, 2), dtype=float)
+        x_warm = np.zeros((len(t), 6), dtype=float)
+        x_warm[0] = x0
+        print("[export] generating warm-start trajectory...", flush=True)
+        for k in range(horizon_steps):
+            dx_sub = x_warm[k, list(state_idx)] - x_trim[list(state_idx)]
+            du = -warm_lqr.k_gain @ dx_sub
+            uk = u_trim[:2].copy()
+            uk[0] = float(np.clip(uk[0] + du[0], u_lower[0], u_upper[0]))
+            uk[1] = float(np.clip(uk[1] + du[1], u_lower[1], u_upper[1]))
+            u_init[k] = uk
+            x_warm[k + 1] = dynamics(x_warm[k], uk)
+
+        print(f"[export] solving iLQR (max_iter={args.max_iter})...", flush=True)
+        ilqr_result = solve_ilqr(
+            dynamics,
+            x0,
+            u_init,
+            x_ref,
+            u_ref,
+            ilqr_q,
+            ilqr_r,
+            ilqr_qf,
+            u_lower=u_lower,
+            u_upper=u_upper,
+            max_iter=int(args.max_iter),
+            tol=1.0e-5,
+            verbose=False,
+            dynamics_jacobian=dynamics_jacobian,
+        )
+        print(
+            "[export] iLQR done | "
+            f"iterations={ilqr_result.iterations} | "
+            f"converged={ilqr_result.converged} | "
+            f"final_cost={ilqr_result.cost_history[-1]:.6f}",
+            flush=True,
+        )
+
+        if args.rollout_mode == "closed-loop":
+            print("[export] evaluating closed-loop iLQR rollout...", flush=True)
+            x_hist, u_eval = rollout_ilqr_policy(
+                dynamics,
+                x0,
+                ilqr_result.x_seq,
+                ilqr_result.u_seq,
+                ilqr_result.k_seq,
+                ilqr_result.K_seq,
+                alpha=1.0,
+                u_lower=u_lower,
+                u_upper=u_upper,
+            )
         else:
-            du = -finite_horizon.k_seq[k] @ dx_sub
+            print("[export] using nominal open-loop iLQR rollout...", flush=True)
+            x_hist = ilqr_result.x_seq
+            u_eval = ilqr_result.u_seq
 
-        uk = u_trim.copy()
-        uk[0] = float(np.clip(u_trim[0] + du[0], rpm_min, rpm_max))
-        uk[1] = float(np.clip(u_trim[1] + du[1], -lim["elevator"], lim["elevator"]))
-        uk[2] = float(np.clip(u_trim[2], 0.0, lim["flap"]))
-        u_hist[k] = uk
-        x_hist[k + 1] = rk4_step(xk, uk, args.dt, vehicle)
-
-    u_hist[-1] = u_hist[-2]
+        u_hist[:-1, :2] = u_eval
+        u_hist[:-1, 2] = u_trim[2]
+        u_hist[-1] = u_hist[-2]
+    print("[export] converting local trajectory to geodetic coordinates...", flush=True)
     x_ref = reference_trajectory(op, t)
     x_dev = x_hist - x_ref
 
@@ -214,6 +316,7 @@ def main() -> None:
         )
 
     out_path = timestamped_history_path(REPO_ROOT / "outputs" / "flight_history", f"longitudinal_{args.controller}_control_flight")
+    print(f"[export] writing CSV to {out_path}...", flush=True)
     write_flight_history_csv(out_path, rows, fieldnames)
     print(f"Saved longitudinal flight history to {out_path}")
 

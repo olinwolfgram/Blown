@@ -121,16 +121,69 @@ def plot_longitudinal_closed_loop_response(
     return fig, axes
 
 
+def plot_longitudinal_reference_path(
+    t: np.ndarray,
+    x_abs: np.ndarray,
+    x_ref: np.ndarray,
+) -> tuple[plt.Figure, np.ndarray]:
+    """Plot actual and reference longitudinal paths in the x-h plane."""
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8), dpi=120, constrained_layout=True)
+
+    ax_path = axes[0, 0]
+    ax_path.plot(x_abs[:, 0], x_abs[:, 1], linewidth=2.2, color="tab:blue", label="Actual path")
+    ax_path.plot(x_ref[:, 0], x_ref[:, 1], "--", linewidth=2.0, color="tab:orange", label="Reference path")
+    ax_path.scatter(x_abs[0, 0], x_abs[0, 1], color="tab:green", s=36, label="Start")
+    ax_path.scatter(x_abs[-1, 0], x_abs[-1, 1], color="tab:red", s=36, label="End")
+    ax_path.set_xlabel("x (m)")
+    ax_path.set_ylabel("h (m)")
+    ax_path.set_title("Flight Path in x-h Plane")
+    ax_path.grid(True, alpha=0.3)
+    ax_path.legend(loc="best")
+
+    ax_x = axes[0, 1]
+    ax_x.plot(t, x_abs[:, 0], linewidth=2.0, color="tab:blue", label="Actual")
+    ax_x.plot(t, x_ref[:, 0], "--", linewidth=1.8, color="tab:orange", label="Reference")
+    ax_x.set_xlabel("Time (s)")
+    ax_x.set_ylabel("x (m)")
+    ax_x.set_title("Longitudinal Position")
+    ax_x.grid(True, alpha=0.3)
+    ax_x.legend(loc="best")
+
+    ax_h = axes[1, 0]
+    ax_h.plot(t, x_abs[:, 1], linewidth=2.0, color="tab:blue", label="Actual")
+    ax_h.plot(t, x_ref[:, 1], "--", linewidth=1.8, color="tab:orange", label="Reference")
+    ax_h.set_xlabel("Time (s)")
+    ax_h.set_ylabel("h (m)")
+    ax_h.set_title("Altitude")
+    ax_h.grid(True, alpha=0.3)
+    ax_h.legend(loc="best")
+
+    ax_err = axes[1, 1]
+    err = np.sqrt((x_abs[:, 0] - x_ref[:, 0]) ** 2 + (x_abs[:, 1] - x_ref[:, 1]) ** 2)
+    ax_err.plot(t, err, linewidth=2.0, color="tab:purple")
+    ax_err.set_xlabel("Time (s)")
+    ax_err.set_ylabel("Path error (m)")
+    ax_err.set_title("Reference Path Tracking Error")
+    ax_err.grid(True, alpha=0.3)
+
+    fig.suptitle("Longitudinal Reference Trajectory and Flight Path", fontsize=16)
+    return fig, axes
+
+
 def plot_lateral_closed_loop_response(
     t: np.ndarray,
     x_dev: np.ndarray,
     x_ref: np.ndarray,
-    u_diff_hist: np.ndarray,
+    u_cmd_hist: np.ndarray,
+    u_ref: np.ndarray | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
     """Plot lateral closed-loop state histories against trim references."""
 
     state_labels = [
+        r"$\Delta x$ (m)",
         r"$\Delta y$ (m)",
+        r"$\Delta u$ (m/s)",
         r"$\Delta v$ (m/s)",
         r"$\Delta \phi$ (deg)",
         r"$\Delta \psi$ (deg)",
@@ -139,40 +192,184 @@ def plot_lateral_closed_loop_response(
     ]
 
     x_plot = x_dev.copy()
-    x_plot[:, 2:] = np.rad2deg(x_plot[:, 2:])
+    x_plot[:, 4:] = np.rad2deg(x_plot[:, 4:])
 
-    fig, axes = plt.subplots(3, 3, figsize=(14, 10), dpi=120, constrained_layout=True)
-    axes = axes.reshape(3, 3)
+    u_arr = np.asarray(u_cmd_hist, dtype=float)
+    if u_arr.ndim == 1:
+        control_labels = [r"$\Delta$RPM diff"]
+        u_plot = u_arr[:, None]
+        u_ref_plot = np.zeros(1, dtype=float) if u_ref is None else np.asarray(u_ref, dtype=float).reshape(-1)[:1]
+    else:
+        u_plot = u_arr.copy()
+        if u_plot.shape[1] >= 2:
+            u_plot[:, 1:] = np.rad2deg(u_plot[:, 1:])
+        if u_plot.shape[1] == 3:
+            control_labels = [r"$\Delta$RPM diff", r"Aileron (deg)", r"Rudder (deg)"]
+        elif u_plot.shape[1] == 4:
+            control_labels = ["Left RPM", "Right RPM", r"Aileron (deg)", r"Rudder (deg)"]
+        else:
+            control_labels = [f"u[{k}]" for k in range(u_plot.shape[1])]
+        if u_ref is None:
+            u_ref_plot = np.zeros(u_plot.shape[1], dtype=float)
+        else:
+            u_ref_plot = np.asarray(u_ref, dtype=float).reshape(-1).copy()
+            if u_ref_plot.size >= 2:
+                u_ref_plot[1:] = np.rad2deg(u_ref_plot[1:])
 
-    for idx in range(6):
+    n_control = u_plot.shape[1]
+    n_panels = 8 + n_control
+    n_rows = int(np.ceil(n_panels / 3))
+    fig, axes = plt.subplots(n_rows, 3, figsize=(14, 3.2 * n_rows), dpi=120, constrained_layout=True)
+    axes = np.asarray(axes).reshape(n_rows, 3)
+
+    for idx in range(8):
         ax = axes.flat[idx]
         ax.plot(t, x_plot[:, idx], linewidth=2, color="tab:purple", label="Closed-loop")
         ax.plot(t, np.zeros_like(t), "--", linewidth=1.5, color="tab:gray", label="Trim reference")
         ax.set_ylabel(state_labels[idx])
         ax.grid(True, alpha=0.3)
-        if idx >= 3:
+        if idx >= max(5, 8 - 3):
             ax.set_xlabel("Time (s)")
+    for j in range(n_control):
+        ax_u = axes.flat[8 + j]
+        ax_u.plot(t, u_plot[:, j], linewidth=2, color="tab:orange", label="Command")
+        ax_u.plot(t, np.full_like(t, u_ref_plot[j]), "--", linewidth=1.5, color="tab:gray", label="Trim reference")
+        ax_u.set_ylabel(control_labels[j])
+        ax_u.set_xlabel("Time (s)")
+        ax_u.grid(True, alpha=0.3)
 
-    ax_diff = axes.flat[6]
-    ax_diff.plot(t, u_diff_hist, linewidth=2, color="tab:orange", label=r"$\Delta$RPM diff")
-    ax_diff.plot(t, np.zeros_like(t), "--", linewidth=1.5, color="tab:gray", label="Trim reference")
-    ax_diff.set_ylabel(r"$\Delta$RPM diff")
-    ax_diff.set_xlabel("Time (s)")
-    ax_diff.grid(True, alpha=0.3)
+    for idx in range(n_panels, axes.size):
+        axes.flat[idx].axis("off")
 
-    axes.flat[7].axis("off")
-    axes.flat[8].axis("off")
     axes[0, 0].legend(loc="best")
-    ax_diff.legend(loc="best")
+    axes.flat[8].legend(loc="best")
 
     trim_text = (
         "Absolute trim state: "
-        f"y={x_ref[0,0]:.2f} m, v={x_ref[0,1]:.2f} m/s, phi={np.rad2deg(x_ref[0,2]):.2f} deg, "
-        f"psi={np.rad2deg(x_ref[0,3]):.2f} deg, p={np.rad2deg(x_ref[0,4]):.2f} deg/s, "
-        f"r={np.rad2deg(x_ref[0,5]):.2f} deg/s"
+        f"x={x_ref[0,0]:.2f} m, y={x_ref[0,1]:.2f} m, u={x_ref[0,2]:.2f} m/s, v={x_ref[0,3]:.2f} m/s, "
+        f"phi={np.rad2deg(x_ref[0,4]):.2f} deg, psi={np.rad2deg(x_ref[0,5]):.2f} deg, "
+        f"p={np.rad2deg(x_ref[0,6]):.2f} deg/s, r={np.rad2deg(x_ref[0,7]):.2f} deg/s"
     )
     fig.suptitle("Closed-Loop Lateral Response About Cruise Trim", fontsize=16)
     fig.text(0.5, 0.01, trim_text, ha="center", va="bottom", fontsize=9)
+    return fig, axes
+
+
+def plot_lateral_scp_response(
+    t: np.ndarray,
+    x_dev: np.ndarray,
+    x_ref: np.ndarray,
+    u_hist: np.ndarray,
+    u_ref: np.ndarray,
+) -> tuple[plt.Figure, np.ndarray]:
+    """Plot lateral SCP state and control histories against references."""
+
+    state_labels = [
+        r"$\Delta x$ (m)",
+        r"$\Delta y$ (m)",
+        r"$\Delta u$ (m/s)",
+        r"$\Delta v$ (m/s)",
+        r"$\Delta \phi$ (deg)",
+        r"$\Delta \psi$ (deg)",
+        r"$\Delta p$ (deg/s)",
+        r"$\Delta r$ (deg/s)",
+    ]
+
+    x_plot = x_dev.copy()
+    x_plot[:, 4:] = np.rad2deg(x_plot[:, 4:])
+
+    u_plot = u_hist.copy()
+    u_plot[:, 2:] = np.rad2deg(u_plot[:, 2:])
+    u_ref_plot = u_ref.copy()
+    u_ref_plot[2:] = np.rad2deg(u_ref_plot[2:])
+    control_labels = [
+        "Left RPM",
+        "Right RPM",
+        r"Aileron (deg)",
+        r"Rudder (deg)",
+    ]
+
+    fig, axes = plt.subplots(4, 3, figsize=(14, 12), dpi=120, constrained_layout=True)
+    axes = axes.reshape(4, 3)
+
+    for idx in range(8):
+        ax = axes.flat[idx]
+        ax.plot(t, x_plot[:, idx], linewidth=2, color="tab:purple", label="Closed-loop")
+        ax.plot(t, np.zeros_like(t), "--", linewidth=1.5, color="tab:gray", label="Reference")
+        ax.set_ylabel(state_labels[idx])
+        ax.grid(True, alpha=0.3)
+        if idx >= 5:
+            ax.set_xlabel("Time (s)")
+
+    for j in range(4):
+        ax = axes.flat[8 + j]
+        ax.plot(t, u_plot[:, j], linewidth=2, color="tab:orange", label="Command")
+        ax.plot(t, np.full_like(t, u_ref_plot[j]), "--", linewidth=1.5, color="tab:gray", label="Reference")
+        ax.set_ylabel(control_labels[j])
+        ax.grid(True, alpha=0.3)
+        ax.set_xlabel("Time (s)")
+
+    axes[0, 0].legend(loc="best")
+    axes[3, 2].legend(loc="best")
+
+    trim_text = (
+        "Absolute trim state: "
+        f"x={x_ref[0,0]:.2f} m, y={x_ref[0,1]:.2f} m, u={x_ref[0,2]:.2f} m/s, v={x_ref[0,3]:.2f} m/s, "
+        f"phi={np.rad2deg(x_ref[0,4]):.2f} deg, psi={np.rad2deg(x_ref[0,5]):.2f} deg, "
+        f"p={np.rad2deg(x_ref[0,6]):.2f} deg/s, r={np.rad2deg(x_ref[0,7]):.2f} deg/s"
+    )
+    fig.suptitle("Lateral SCP Response About Cruise Trim", fontsize=16)
+    fig.text(0.5, 0.01, trim_text, ha="center", va="bottom", fontsize=9)
+    return fig, axes
+
+
+def plot_lateral_reference_path(
+    t: np.ndarray,
+    x_abs: np.ndarray,
+    x_ref: np.ndarray,
+) -> tuple[plt.Figure, np.ndarray]:
+    """Plot actual and reference lateral paths in the x-y plane."""
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8), dpi=120, constrained_layout=True)
+
+    ax_path = axes[0, 0]
+    ax_path.plot(x_abs[:, 0], x_abs[:, 1], linewidth=2.2, color="tab:purple", label="Actual path")
+    ax_path.plot(x_ref[:, 0], x_ref[:, 1], "--", linewidth=2.0, color="tab:orange", label="Reference path")
+    ax_path.scatter(x_abs[0, 0], x_abs[0, 1], color="tab:green", s=36, label="Start")
+    ax_path.scatter(x_abs[-1, 0], x_abs[-1, 1], color="tab:red", s=36, label="End")
+    ax_path.set_xlabel("x (m)")
+    ax_path.set_ylabel("y (m)")
+    ax_path.set_title("Flight Path in x-y Plane")
+    ax_path.grid(True, alpha=0.3)
+    ax_path.legend(loc="best")
+
+    ax_y = axes[0, 1]
+    ax_y.plot(t, x_abs[:, 1], linewidth=2.0, color="tab:purple", label="Actual")
+    ax_y.plot(t, x_ref[:, 1], "--", linewidth=1.8, color="tab:orange", label="Reference")
+    ax_y.set_xlabel("Time (s)")
+    ax_y.set_ylabel("y (m)")
+    ax_y.set_title("Lateral Position")
+    ax_y.grid(True, alpha=0.3)
+    ax_y.legend(loc="best")
+
+    ax_psi = axes[1, 0]
+    ax_psi.plot(t, np.rad2deg(x_abs[:, 5]), linewidth=2.0, color="tab:purple", label="Actual")
+    ax_psi.plot(t, np.rad2deg(x_ref[:, 5]), "--", linewidth=1.8, color="tab:orange", label="Reference")
+    ax_psi.set_xlabel("Time (s)")
+    ax_psi.set_ylabel(r"$\psi$ (deg)")
+    ax_psi.set_title("Heading")
+    ax_psi.grid(True, alpha=0.3)
+    ax_psi.legend(loc="best")
+
+    ax_err = axes[1, 1]
+    err = np.sqrt((x_abs[:, 0] - x_ref[:, 0]) ** 2 + (x_abs[:, 1] - x_ref[:, 1]) ** 2)
+    ax_err.plot(t, err, linewidth=2.0, color="tab:purple")
+    ax_err.set_xlabel("Time (s)")
+    ax_err.set_ylabel("Tracking error")
+    ax_err.set_title("Reference Tracking Error")
+    ax_err.grid(True, alpha=0.3)
+
+    fig.suptitle("Lateral Reference Trajectory and Flight Path", fontsize=16)
     return fig, axes
 
 

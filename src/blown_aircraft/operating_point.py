@@ -68,13 +68,13 @@ def build_symmetric_cruise_operating_point(
         vehicle,
     )
 
-    x_lat = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=float)
+    x_lat = np.array([0.0, 0.0, u, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=float)
     u_lat = np.array([rpm_collective, rpm_collective, 0.0, 0.0], dtype=float)
 
     lon_dx = longitudinal_state_derivative(x_lon, u_lon, vehicle)
-    lat_dx = lateral_state_derivative(x_lat, u_lat, vehicle)
+    lat_dx = lateral_state_derivative(x_lat, u_lat, vehicle, w_trim_mps=w, theta_trim_rad=theta)
     lon_trim_resid = np.array([lon_dx[2], lon_dx[3], lon_dx[5]], dtype=float)
-    lat_trim_resid = np.array([lat_dx[1], lat_dx[4], lat_dx[5]], dtype=float)
+    lat_trim_resid = np.array([lat_dx[2], lat_dx[3], lat_dx[5], lat_dx[7]], dtype=float)
 
     return CruiseOperatingPoint(
         speed_mps=speed_mps,
@@ -107,7 +107,13 @@ def linearize_about_cruise(
         dt=dt,
     )
     lat_lin = linearize(
-        lambda x, u: lateral_state_derivative(x, u, vehicle),
+        lambda x, u: lateral_state_derivative(
+            x,
+            u,
+            vehicle,
+            w_trim_mps=op.longitudinal_state[3],
+            theta_trim_rad=op.longitudinal_state[4],
+        ),
         op.lateral_state,
         op.lateral_control,
         dt=dt,
